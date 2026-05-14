@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Сетка турнира | Double Elimination</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #121212;
+      color: #e8e8e8;
+      min-height: 100vh;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      border-bottom: 1px solid #2a2a2a;
+      background: #161616;
+      flex-wrap: wrap;
+    }
+    .toolbar-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      margin-right: auto;
+    }
+    .btn-schedule {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid #3d3d3d;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .btn-schedule:hover { background: #282828; border-color: #555; }
+    .btn-schedule.active { background: #2a2a2a; border-color: #777; color: #fff; }
+    .btn-schedule svg { width: 14px; height: 14px; opacity: 0.85; }
+    .toolbar-meta {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .toolbar-actions { display: flex; align-items: center; gap: 10px; }
+    .badge-admin {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: #2d4a2d;
+      color: #a8e6a8;
+    }
+    button.ghost {
+      background: #2a2a2a;
+      border: 1px solid #3d3d3d;
+      color: #ddd;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    button.ghost:hover { background: #363636; }
+    .viewport {
+      position: relative;
+      overflow-x: auto;
+      overflow-y: visible;
+      padding: 24px 20px 48px;
+      min-height: calc(100vh - 56px);
+    }
+    .schedule-wrap { max-width: 1100px; margin: 0 auto; }
+    .schedule-wrap.hidden { display: none; }
+    .schedule-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .schedule-table th, .schedule-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .schedule-table th { color: #888; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .schedule-row { cursor: pointer; }
+    .schedule-row:hover { background: #1c1c1c; }
+    .bracket-wrap { position: relative; display: block; }
+    .bracket-wrap.hidden { display: none; }
+    .bracket-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .bracket-inner {
+      position: relative;
+      z-index: 1;
+      width: max-content;
+      min-width: 100%;
+      padding-bottom: 24px;
+    }
+    .bracket-liquid {
+      display: grid;
+      grid-template-columns: 142px 142px 142px 142px 158px;
+      grid-template-rows: auto auto;
+      column-gap: 26px;
+      row-gap: 34px;
+      align-items: start;
+    }
+    .bracket-cell {
+      min-width: 0;
+    }
+    .bracket-cell.gf-bracket-cell {
+      align-self: center;
+    }
+    .bracket-cell--ub-gap {
+      pointer-events: none;
+    }
+    .round-col {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      flex-shrink: 0;
+    }
+    .round-title {
+      text-align: center;
+      font-size: 0.58rem;
+      font-weight: 600;
+      color: #b0b0b0;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 3px;
+      padding: 4px 5px;
+      margin-bottom: 8px;
+      text-transform: none;
+      letter-spacing: 0.02em;
+    }
+    .match-stack {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      flex: 1;
+      gap: 0;
+    }
+    .match-spacer { flex-shrink: 0; }
+    .match {
+      background: #1a1a1a;
+      border: 1px solid #2f2f2f;
+      border-radius: 6px;
+      overflow: hidden;
+      width: 100%;
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .match:hover { border-color: #505050; background: #202020; }
+    .match.gf-match { border-color: #3a3a3a; min-height: auto; }
+    .team-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 5px;
+      min-height: 24px;
+      font-size: 0.68rem;
+    }
+    .team-row + .team-row { border-top: 1px solid #252525; }
+    .team-row.winner .team-name { color: #fff; font-weight: 600; }
+    .team-row:not(.winner) .team-name { color: #7a7a7a; }
+    .team-logo {
+      width: 16px;
+      height: 16px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #3a3a5a, #2a2a3a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.55rem;
+      font-weight: 700;
+      color: #ccc;
+    }
+    .team-name {
+      flex: 1;
+      min-width: 0;
+      line-height: 1.2;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .team-score {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: #ccc;
+      min-width: 18px;
+      text-align: center;
+      background: #242424;
+      border-radius: 2px;
+      padding: 1px 4px;
+      margin-left: 2px;
+      font-size: 0.65rem;
+    }
+    .team-row.winner .team-score { color: #fff; }
+    .match-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 15px;
+      background: #151515;
+      border-top: 1px solid #252525;
+      border-bottom: 1px solid #252525;
+    }
+    .info-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid #444;
+      color: #888;
+      font-size: 0.55rem;
+      font-style: italic;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      pointer-events: auto;
+      background: #1e1e1e;
+    }
+    .info-dot:hover { color: #ccc; border-color: #666; }
+    .empty-hint {
+      text-align: center;
+      padding: 48px 20px;
+      color: #666;
+      font-size: 0.9rem;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .admin-dock {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      width: 320px;
+      max-width: calc(100vw - 32px);
+      max-height: 70vh;
+      overflow-y: auto;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 14px;
+      z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .admin-dock.hidden { display: none; }
+    .admin-dock h4 { font-size: 0.85rem; margin-bottom: 10px; color: #aaa; }
+    .admin-dock .team-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .admin-dock input, .admin-dock select {
+      background: #252525;
+      border: 1px solid #3a3a3a;
+      color: #eee;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .admin-dock .team-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      background: #222;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 0.8rem;
+    }
+    .delete-team { background: #5a2222; border: none; color: #faa; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .format-settings { margin-top: 12px; padding-top: 10px; border-top: 1px solid #333; font-size: 0.75rem; }
+    .format-row { display: flex; justify-content: space-between; margin-bottom: 6px; gap: 8px; }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .modal-content {
+      background: #1e1e1e;
+      border: 1px solid #3a3a3a;
+      border-radius: 12px;
+      overflow-y: auto;
+    }
+    .modal-content.modal-liquipedia {
+      width: 680px;
+      max-width: 96%;
+      max-height: 90vh;
+      padding: 16px 18px;
+    }
+    .md-head-date {
+      font-size: 0.8rem;
+      color: #9a9a9a;
+      margin-bottom: 10px;
+    }
+    .md-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .md-team-block { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 120px; }
+    .md-team-block.right { flex-direction: row-reverse; text-align: right; }
+    .md-big-score { font-size: 1.35rem; font-weight: 700; letter-spacing: 0.06em; }
+    .md-bo { font-size: 0.75rem; color: #888; }
+    .md-game-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto 1fr 28px;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2a2a;
+      font-size: 0.78rem;
+    }
+    .md-heroes { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+    .md-heroes.left { justify-content: flex-start; }
+    .md-heroes.right { justify-content: flex-end; }
+    .hero-icon-img {
+      width: 26px;
+      height: 26px;
+      border-radius: 3px;
+      object-fit: cover;
+      border: 1px solid #333;
+      background: #111;
+    }
+    .hero-icon-img.hero-icon-broken { opacity: 0.35; }
+    .hero-slot-empty {
+      display: inline-block;
+      width: 26px;
+      height: 26px;
+      border-radius: 3px;
+      border: 1px dashed #444;
+      background: #1a1a1a;
+      vertical-align: middle;
+    }
+    .wl-badge {
+      width: 22px;
+      height: 22px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.65rem;
+    }
+    .wl-w { background: #1e4d2a; color: #8fef9a; }
+    .wl-l { background: #4d1e1e; color: #f0a0a0; }
+    .wl-- { background: #333; color: #777; }
+    .md-dur { text-align: center; color: #bbb; font-variant-numeric: tabular-nums; min-width: 52px; }
+    .md-bans { margin-top: 12px; padding-top: 10px; border-top: 1px solid #333; font-size: 0.78rem; }
+    .md-bans summary { cursor: pointer; color: #aaa; }
+    .md-meta-row { margin-top: 10px; font-size: 0.78rem; color: #888; }
+    .md-game-admin { display: grid; gap: 6px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #2a2a2a; }
+    .md-pick-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .md-pick-row select { max-width: 110px; font-size: 0.7rem; padding: 2px 4px; }
+    .teams-grid-wiki {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .team-wiki-card h3 {
+      font-size: 0.95rem;
+      color: #fff;
+      margin-bottom: 6px;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .roster-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .roster-table th, .roster-table td {
+      padding: 5px 7px;
+      text-align: left;
+      border-bottom: 1px solid #252525;
+      vertical-align: top;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .roster-table th { color: #777; font-weight: 600; width: 52px; }
+    .modal-content h3 { margin-bottom: 14px; font-size: 1.05rem; }
+    .match-detail-row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .team-detail {
+      flex: 1;
+      min-width: 200px;
+      background: #252525;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .score-input { width: 72px; padding: 6px; margin-top: 6px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; }
+    .stream-input { width: 100%; margin-top: 8px; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; }
+    .modal-actions { text-align: center; margin-top: 18px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .modal-actions button {
+      background: #333;
+      border: 1px solid #484848;
+      color: #eee;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .modal-actions button.primary { background: #3d5a80; border-color: #4a6a9a; }
+    .modal-actions button:hover { filter: brightness(1.08); }
+    .page-inner { max-width: 1280px; margin: 0 auto; padding: 0 16px 32px; }
+    .wiki-panel {
+      background: #161616;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+    .wiki-panel h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+      line-height: 1.25;
+    }
+    .wiki-panel .wiki-meta {
+      font-size: 0.85rem;
+      color: #9a9a9a;
+      margin-bottom: 12px;
+      line-height: 1.45;
+    }
+    .wiki-panel .wiki-desc {
+      font-size: 0.9rem;
+      color: #c4c4c4;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .wiki-teams-block h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #ddd;
+      margin-bottom: 12px;
+      letter-spacing: 0.02em;
+    }
+    .team-wiki-card {
+      background: #161616;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 0.85rem;
+    }
+    .team-wiki-card .notice {
+      font-size: 0.75rem;
+      color: #888;
+      margin-bottom: 8px;
+      font-style: italic;
+    }
+    .section-divider {
+      border: none;
+      border-top: 1px solid #2a2a2a;
+      margin: 20px 0 22px;
+    }
+    .toolbar-title { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+<div class="toolbar">
+  <span class="toolbar-title" id="toolbar-title" title="">Турнир</span>
+  <button type="button" class="btn-schedule" id="btn-schedule" aria-pressed="false">
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12v12H2V2zm1 3v8h10V5H3zm1-3h1v2H4V2zm6 0h1v2h-1V2zM3 6h10v1H3V6zm0 3h4v1H3V9zm0 3h4v1H3v-1zm6-3h4v1H9V9zm0 3h4v1H9v-1z"/></svg>
+    Show schedule
+  </button>
+  <span class="toolbar-meta" id="toolbar-meta"></span>
+  <div class="toolbar-actions" id="auth-area"></div>
+</div>
+
+<div class="viewport">
+  <div class="page-inner">
+  <div class="wiki-panel" id="wiki-panel">
+    <h1 id="tournament-name">Турнир</h1>
+    <div class="wiki-meta" id="tournament-meta"></div>
+    <div class="wiki-desc" id="tournament-desc">Краткое описание турнира появится здесь. Войдите как админ, чтобы изменить название, призовой фонд, даты и текст.</div>
+  </div>
+  <div class="wiki-teams-block wiki-panel" id="wiki-teams-block">
+    <h2>Участники</h2>
+    <div class="teams-grid-wiki" id="teams-grid-wiki"></div>
+  </div>
+  <hr class="section-divider" aria-hidden="true">
+  <div class="bracket-wrap" id="bracket-wrap">
+    <svg class="bracket-svg" id="bracket-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="bracket-inner" id="bracket-inner"></div>
+  </div>
+  <div class="schedule-wrap hidden" id="schedule-wrap">
+    <table class="schedule-table">
+      <thead><tr><th>Раунд</th><th>Команда 1</th><th>Счёт</th><th>Команда 2</th><th>Стрим</th></tr></thead>
+      <tbody id="schedule-body"></tbody>
+    </table>
+  </div>
+  </div>
+</div>
+
+<div id="admin-dock" class="admin-dock hidden"></div>
+
+<script>
+  const MATCH_H = 56;
+  const UB_QF_GAP = 10;
+  /** Вертикальный зазор между двумя матчами в колонке UB SF / LB QF (центры пар UB QF / LB R1) */
+  const GAP_UB_SF = MATCH_H + 2 * UB_QF_GAP;
+
+  let teams = [];
+  let matches = [];
+  let isAdmin = false;
+  let scheduleMode = false;
+  const ADMIN_PASSWORD = 'admin123';
+
+  let infobox = {
+    name: 'PGL Wallachia Season 8',
+    description: 'Командный турнир в формате double elimination. Сетка рассчитана на 8 команд.',
+    prize: '$1,000,000 USD',
+    dates: '18 апр. — 26 апр. 2026',
+    version: 'Патч 7.41b'
+  };
+
+  const STORAGE_KEYS = {
+    teams: 'tournament_teams_list_v2',
+    matches: 'tournament_matches_list_v2',
+    formats: 'tournament_formats_list_v2',
+    infobox: 'tournament_infobox_list_v2'
+  };
+
+  let formats = {
+    ubqf: 3, ubsf: 3, ubf: 3,
+    lbr1: 3, lbqf: 3, lbsf: 3, lbf: 3,
+    gf: 5
+  };
+
+  const heroList = [
+    'Anti-Mage', 'Axe', 'Bane', 'Crystal Maiden', 'Drow Ranger', 'Earthshaker', 'Juggernaut',
+    'Mirana', 'Shadow Fiend', 'Storm Spirit', 'Sven', 'Tiny', 'Vengeful Spirit', 'Windranger',
+    'Zeus', 'Kunkka', 'Lina', 'Lion', 'Slardar', 'Tidehunter', 'Puck', 'Pangolier', 'Hoodwink', 'Kez'
+  ];
+
+  const HERO_SLUG = {
+    'Anti-Mage': 'antimage', Axe: 'axe', Bane: 'bane', 'Crystal Maiden': 'crystal_maiden',
+    'Drow Ranger': 'drow_ranger', Earthshaker: 'earthshaker', Juggernaut: 'juggernaut',
+    Mirana: 'mirana', 'Shadow Fiend': 'nevermore', 'Storm Spirit': 'storm_spirit', Sven: 'sven',
+    Tiny: 'tiny', 'Vengeful Spirit': 'vengefulspirit', Windranger: 'windrunner', Zeus: 'zuus',
+    Kunkka: 'kunkka', Lina: 'lina', Lion: 'lion', Slardar: 'slardar', Tidehunter: 'tidehunter',
+    Puck: 'puck', Pangolier: 'pangolier', Hoodwink: 'hoodwink', Kez: 'kez'
+  };
+
+  function emptyGame() {
+    return { duration: '', winner: '', picks_t1: ['', '', '', '', ''], picks_t2: ['', '', '', '', ''] };
+  }
+
+  function ensureMatchDetail(m) {
+    if (!m.matchDetail) m.matchDetail = { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] };
+    if (!Array.isArray(m.matchDetail.games)) m.matchDetail.games = [];
+    if (!Array.isArray(m.matchDetail.bans_t1)) m.matchDetail.bans_t1 = [];
+    if (!Array.isArray(m.matchDetail.bans_t2)) m.matchDetail.bans_t2 = [];
+  }
+
+  function padGamesToFormat(m, maxGames) {
+    ensureMatchDetail(m);
+    while (m.matchDetail.games.length < maxGames) m.matchDetail.games.push(emptyGame());
+    while (m.matchDetail.games.length > maxGames) m.matchDetail.games.pop();
+    m.matchDetail.games.forEach(g => {
+      g.picks_t1 = (g.picks_t1 && g.picks_t1.length) ? [...g.picks_t1] : [];
+      g.picks_t2 = (g.picks_t2 && g.picks_t2.length) ? [...g.picks_t2] : [];
+      while (g.picks_t1.length < 5) g.picks_t1.push('');
+      while (g.picks_t2.length < 5) g.picks_t2.push('');
+      g.picks_t1.length = 5;
+      g.picks_t2.length = 5;
+      if (g.winner !== 't1' && g.winner !== 't2') g.winner = '';
+      if (g.duration == null) g.duration = '';
+    });
+  }
+
+  function normalizeMatchesGameDetails() {
+    matches.forEach(m => ensureMatchDetail(m));
+  }
+
+  function heroIconImg(hero, size) {
+    const sz = size || 26;
+    if (!hero) return `<span class="hero-slot-empty" style="width:${sz}px;height:${sz}px"></span>`;
+    const slug = HERO_SLUG[hero] || String(hero).toLowerCase().replace(/[^a-z]/g, '');
+    const u = `https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
+    return `<img class="hero-icon-img" src="${escapeHtml(u)}" width="${sz}" height="${sz}" alt="${escapeHtml(hero)}" title="${escapeHtml(hero)}" loading="lazy" onerror="this.classList.add('hero-icon-broken')"/>`;
+  }
+
+  function displaySlotTeam(match, idx) {
+    const t = idx === 1 ? match.team1 : match.team2;
+    return t && t.name ? t.name : '—';
+  }
+
+  function loserNotWinner(mm) {
+    if (!mm || !mm.winner || !mm.team1 || !mm.team2) return null;
+    return mm.winner === mm.team1 ? mm.team2 : mm.team1;
+  }
+
+  function heroSelectHtml(selectedVal, id) {
+    let o = '<option value="">—</option>';
+    heroList.forEach(h => {
+      o += `<option value="${escapeHtml(h)}" ${h === selectedVal ? 'selected' : ''}>${escapeHtml(h)}</option>`;
+    });
+    return `<select id="${escapeHtml(id)}" class="md-hero-sel">${o}</select>`;
+  }
+
+  function toDateTimeLocalValue(raw) {
+    if (!raw) return '';
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return String(raw).length >= 16 ? String(raw).slice(0, 16) : String(raw);
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  const ROUND_LABELS = {
+    UBQF: 'UB Quarterfinals',
+    UBSF: 'UB Semifinals',
+    UBF: 'UB Final',
+    LBR1: 'LB Round 1',
+    LBQF: 'LB Quarterfinals',
+    LBSF: 'LB Semifinal',
+    LBF: 'LB Final',
+    GF: 'Grand Final'
+  };
+
+  /** Пары для линий: [fromId, toId, kind] kind: 'win' | 'loss' */
+  const BRACKET_EDGES = [
+    ['ubqf_0', 'ubsf_0', 'win'], ['ubqf_1', 'ubsf_0', 'win'],
+    ['ubqf_2', 'ubsf_1', 'win'], ['ubqf_3', 'ubsf_1', 'win'],
+    ['ubsf_0', 'ubf', 'win'], ['ubsf_1', 'ubf', 'win'],
+    ['ubqf_0', 'lbr1_0', 'loss'],
+    ['ubqf_1', 'lbr1_0', 'loss'],
+    ['ubqf_2', 'lbr1_1', 'loss'],
+    ['ubqf_3', 'lbr1_1', 'loss'],
+    ['lbr1_0', 'lbqf_0', 'win'],
+    ['lbr1_1', 'lbqf_1', 'win'],
+    ['ubsf_0', 'lbqf_0', 'loss'], ['ubsf_1', 'lbqf_1', 'loss'],
+    ['lbqf_0', 'lbsf', 'win'], ['lbqf_1', 'lbsf', 'win'],
+    ['lbsf', 'lbf', 'win'],
+    ['ubf', 'lbf', 'loss'],
+    ['ubf', 'gf', 'win'], ['lbf', 'gf', 'win']
+  ];
+
+  function getDefaultTeams() {
+    return [
+      { id: 1, name: 'Team Yandex', players: [{ name: 'watson', role: 1 }, { name: 'CHIRA_JUNIOR', role: 2 }, { name: 'DM', role: 3 }, { name: 'Saksa', role: 4 }, { name: 'Malady', role: 5 }], notice: 'DM stand-in for Noticed' },
+      { id: 2, name: 'Tundra Esports', players: [{ name: 'V-Tune', role: 1 }, { name: 'bzm', role: 2 }, { name: '33', role: 3 }, { name: 'Ari', role: 4 }, { name: 'Whitemon', role: 5 }], notice: 'V-Tune stand-in for Pure' },
+      { id: 3, name: 'PARIVISION', players: [{ name: 'Satanic', role: 1 }, { name: 'Noone', role: 2 }, { name: 'SSS', role: 3 }, { name: '9Class', role: 4 }, { name: 'Dukalis', role: 5 }], notice: '' },
+      { id: 4, name: 'Team Spirit', players: [{ name: 'Yatoro', role: 1 }, { name: 'Larl', role: 2 }, { name: 'Batyuk', role: 3 }, { name: 'rue', role: 4 }, { name: 'panto', role: 5 }], notice: 'Batyuk stand-in for Collapse' },
+      { id: 5, name: 'Xtreme Gaming', players: [{ name: 'Ame', role: 1 }, { name: 'NothingToSay', role: 2 }, { name: 'Xxs', role: 3 }, { name: 'fy', role: 4 }, { name: 'xNova', role: 5 }], notice: '' },
+      { id: 6, name: 'Team Liquid', players: [{ name: 'm1CKe', role: 1 }, { name: 'Nisha', role: 2 }, { name: 'Ace', role: 3 }, { name: 'Ekki', role: 4 }, { name: 'tOfu', role: 5 }], notice: '' },
+      { id: 7, name: 'BetBoom Team', players: [{ name: 'Kiritych', role: 1 }, { name: 'gpk', role: 2 }, { name: 'MieRo', role: 3 }, { name: 'Save-', role: 4 }, { name: 'Kataomi', role: 5 }], notice: '' },
+      { id: 8, name: 'Aurora Gaming', players: [{ name: 'Nightfall', role: 1 }, { name: 'Mikoto', role: 2 }, { name: 'Ws', role: 3 }, { name: 'Mira', role: 4 }, { name: 'kaori', role: 5 }], notice: '' }
+    ];
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+  }
+
+  function renderTournamentBlock() {
+    const h1 = document.getElementById('tournament-name');
+    const meta = document.getElementById('tournament-meta');
+    const desc = document.getElementById('tournament-desc');
+    const tb = document.getElementById('toolbar-title');
+    const tbm = document.getElementById('toolbar-meta');
+    const bits = [infobox.prize, infobox.dates, infobox.version].filter(Boolean);
+    const line = bits.join(' · ');
+    if (h1) h1.textContent = infobox.name || 'Турнир';
+    if (desc) desc.textContent = infobox.description || '';
+    if (meta) meta.textContent = line;
+    if (tb) {
+      tb.textContent = infobox.name || 'Турнир';
+      tb.title = infobox.name || '';
+    }
+    if (tbm) tbm.textContent = line;
+  }
+
+  function renderTeamsWiki() {
+    const el = document.getElementById('teams-grid-wiki');
+    if (!el) return;
+    if (!teams.length) {
+      el.innerHTML = '<div style="color:#666;font-size:0.85rem;">Нет команд</div>';
+      return;
+    }
+    const roleLabel = r => ({ 1: '1 (керри)', 2: '2 (мид)', 3: '3 (оффлейн)', 4: '4', 5: '5 (саппорт)' }[Number(r)] || String(r));
+    el.innerHTML = teams.map(t => {
+      const rows = [...(t.players || [])].sort((a, b) => (a.role || 0) - (b.role || 0))
+        .map(p => `<tr><th>${escapeHtml(roleLabel(p.role))}</th><td>${escapeHtml(p.name)}</td></tr>`).join('');
+      return `
+        <div class="team-wiki-card">
+          <h3>${escapeHtml(t.name)}</h3>
+          ${t.notice ? `<div class="notice">${escapeHtml(t.notice)}</div>` : ''}
+          <table class="roster-table">
+            <thead><tr><th>Роль</th><th>Игрок</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="2" style="color:#666">Нет состава</td></tr>'}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+  }
+
+  function teamInitials(name) {
+    if (!name || name === 'TBD') return '?';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+
+  function logoHue(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i) * 13) % 360;
+    return h;
+  }
+
+  function saveAll() {
+    localStorage.setItem(STORAGE_KEYS.teams, JSON.stringify(teams));
+    localStorage.setItem(STORAGE_KEYS.matches, JSON.stringify(matches));
+    localStorage.setItem(STORAGE_KEYS.formats, JSON.stringify(formats));
+    localStorage.setItem(STORAGE_KEYS.infobox, JSON.stringify(infobox));
+  }
+
+  function loadAll() {
+    const storedTeams = localStorage.getItem(STORAGE_KEYS.teams);
+    teams = storedTeams ? JSON.parse(storedTeams) : getDefaultTeams();
+    const storedMatches = localStorage.getItem(STORAGE_KEYS.matches);
+    matches = storedMatches ? JSON.parse(storedMatches) : [];
+    if (matches.filter(m => m.round === 'LBR1').length > 2) {
+      matches = [];
+      localStorage.setItem(STORAGE_KEYS.matches, JSON.stringify(matches));
+    }
+    const storedFormats = localStorage.getItem(STORAGE_KEYS.formats);
+    if (storedFormats) formats = JSON.parse(storedFormats);
+    const storedInfobox = localStorage.getItem(STORAGE_KEYS.infobox);
+    if (storedInfobox) {
+      try {
+        const data = JSON.parse(storedInfobox);
+        infobox = {
+          name: data.name || infobox.name,
+          description: 'description' in data ? data.description : infobox.description,
+          prize: 'prize' in data ? data.prize : infobox.prize,
+          dates: 'dates' in data ? data.dates : infobox.dates,
+          version: 'version' in data ? data.version : infobox.version
+        };
+      } catch (_) {}
+    }
+    normalizeMatchesGameDetails();
+  }
+
+  function findMatch(id) {
+    return matches.find(m => m.id === id);
+  }
+
+  function createEmptyBracket(teamsArray) {
+    if (teamsArray.length !== 8) return [];
+    const ubQF = [];
+    for (let i = 0; i < 4; i++) {
+      ubQF.push({
+        id: `ubqf_${i}`, round: 'UBQF', stage: 'winners',
+        team1: teamsArray[i * 2], team2: teamsArray[i * 2 + 1],
+        score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '',
+        matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] }
+      });
+    }
+    const ubSF = [
+      { id: 'ubsf_0', round: 'UBSF', stage: 'winners', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } },
+      { id: 'ubsf_1', round: 'UBSF', stage: 'winners', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } }
+    ];
+    const ubFinal = { id: 'ubf', round: 'UBF', stage: 'winners', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } };
+    const lbR1 = [
+      { id: 'lbr1_0', round: 'LBR1', stage: 'losers', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } },
+      { id: 'lbr1_1', round: 'LBR1', stage: 'losers', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } }
+    ];
+    const lbQF = [
+      { id: 'lbqf_0', round: 'LBQF', stage: 'losers', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } },
+      { id: 'lbqf_1', round: 'LBQF', stage: 'losers', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } }
+    ];
+    const lbSF = { id: 'lbsf', round: 'LBSF', stage: 'losers', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } };
+    const lbFinal = { id: 'lbf', round: 'LBF', stage: 'losers', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } };
+    const grandFinal = { id: 'gf', round: 'GF', stage: 'final', team1: null, team2: null, score1: 0, score2: 0, winner: null, picks: { t1: [], t2: [] }, stream: '', matchDetail: { scheduledAt: '', casters: '', bans_t1: [], bans_t2: [], games: [] } };
+    return [...ubQF, ...ubSF, ubFinal, ...lbR1, ...lbQF, lbSF, lbFinal, grandFinal];
+  }
+
+  function propagateAllMatches() {
+    const ubQF = matches.filter(m => m.round === 'UBQF');
+    const ubSF = matches.filter(m => m.round === 'UBSF');
+    const ubF = matches.find(m => m.round === 'UBF');
+    const lbR1 = matches.filter(m => m.round === 'LBR1');
+    const lbQF = matches.filter(m => m.round === 'LBQF');
+    const lbSF = matches.find(m => m.round === 'LBSF');
+    const lbF = matches.find(m => m.round === 'LBF');
+    const gf = matches.find(m => m.round === 'GF');
+
+    if (ubQF.length === 4 && ubSF.length === 2) {
+      ubSF[0].team1 = ubQF[0]?.winner ?? null;
+      ubSF[0].team2 = ubQF[1]?.winner ?? null;
+      ubSF[1].team1 = ubQF[2]?.winner ?? null;
+      ubSF[1].team2 = ubQF[3]?.winner ?? null;
+    }
+    if (ubSF.length === 2 && ubF) {
+      ubF.team1 = ubSF[0]?.winner ?? null;
+      ubF.team2 = ubSF[1]?.winner ?? null;
+    }
+    function loserOfQF(qf) {
+      if (!qf || !qf.team1 || !qf.team2 || !qf.winner) return null;
+      return qf.winner === qf.team1 ? qf.team2 : qf.team1;
+    }
+    if (ubQF.length === 4 && lbR1.length === 2) {
+      lbR1[0].team1 = loserOfQF(ubQF[0]);
+      lbR1[0].team2 = loserOfQF(ubQF[1]);
+      lbR1[1].team1 = loserOfQF(ubQF[2]);
+      lbR1[1].team2 = loserOfQF(ubQF[3]);
+    }
+    if (lbQF.length === 2 && lbR1.length === 2 && ubSF.length === 2) {
+      lbQF[0].team1 = lbR1[0]?.winner ?? null;
+      lbQF[0].team2 = loserNotWinner(ubSF[0]);
+      lbQF[1].team1 = lbR1[1]?.winner ?? null;
+      lbQF[1].team2 = loserNotWinner(ubSF[1]);
+    }
+    if (lbSF && lbQF.length === 2) {
+      lbSF.team1 = lbQF[0]?.winner ?? null;
+      lbSF.team2 = lbQF[1]?.winner ?? null;
+    }
+    if (lbF && lbSF && ubF) {
+      lbF.team1 = lbSF?.winner ?? null;
+      lbF.team2 = loserNotWinner(ubF);
+    }
+    if (gf && ubF && lbF) {
+      gf.team1 = ubF?.winner ?? null;
+      gf.team2 = lbF?.winner ?? null;
+    }
+    saveAll();
+  }
+
+  function buildBracket() {
+    if (teams.length !== 8) {
+      alert('Нужно ровно 8 команд. Сейчас ' + teams.length);
+      return;
+    }
+    matches = createEmptyBracket(teams);
+    propagateAllMatches();
+    saveAll();
+    renderEverything();
+  }
+
+  function renderMatchHtml(match, opts) {
+    const isGf = opts && opts.gf;
+    const t1 = displaySlotTeam(match, 1);
+    const t2 = displaySlotTeam(match, 2);
+    const w1 = match.winner && match.team1 && match.winner === match.team1;
+    const w2 = match.winner && match.team2 && match.winner === match.team2;
+    const h1 = logoHue(t1);
+    const h2 = logoHue(t2);
+    return `
+      <div class="match ${isGf ? 'gf-match' : ''}" data-match-id="${escapeHtml(match.id)}" role="button" tabindex="0">
+        <div class="team-row ${w1 ? 'winner' : ''}">
+          <span class="team-logo" style="background:linear-gradient(135deg,hsl(${h1},35%,28%),hsl(${(h1 + 40) % 360},25%,18%))">${escapeHtml(teamInitials(t1))}</span>
+          <span class="team-name">${escapeHtml(t1)}</span>
+          <span class="team-score">${match.score1}</span>
+        </div>
+        <div class="match-divider"><span class="info-dot" data-info-match="${escapeHtml(match.id)}" title="Детали">i</span></div>
+        <div class="team-row ${w2 ? 'winner' : ''}">
+          <span class="team-logo" style="background:linear-gradient(135deg,hsl(${h2},35%,28%),hsl(${(h2 + 40) % 360},25%,18%))">${escapeHtml(teamInitials(t2))}</span>
+          <span class="team-name">${escapeHtml(t2)}</span>
+          <span class="team-score">${match.score2}</span>
+        </div>
+      </div>`;
+  }
+
+  function ubSpacerBeforeFirstSf() {
+    const block = MATCH_H * 2 + UB_QF_GAP;
+    const h = block / 2 - MATCH_H / 2;
+    return `<div class="match-spacer" style="height:${h}px"></div>`;
+  }
+
+  function ubFinalSpacer() {
+    const centerUb = (MATCH_H * 2 + UB_QF_GAP) * 1.5 + UB_QF_GAP / 2;
+    const h = centerUb - MATCH_H / 2;
+    return `<div class="match-spacer" style="height:${h}px"></div>`;
+  }
+
+  function renderBracketGrid() {
+    const inner = document.getElementById('bracket-inner');
+    if (!inner) return;
+    if (teams.length !== 8 || matches.length === 0) {
+      inner.innerHTML = '<p class="empty-hint">Сетка не создана. Войдите как админ, добавьте 8 команд и нажмите «Сформировать сетку».</p>';
+      drawBracketLines();
+      return;
+    }
+
+    const m = id => findMatch(id);
+    const col = (titleKey, stackHtml, extraClass = '') =>
+      `<div class="round-col ${extraClass}"><div class="round-title">${ROUND_LABELS[titleKey] || titleKey}</div><div class="match-stack">${stackHtml}</div></div>`;
+
+    const cell = (gridCol, gridRow, innerHtml, extraClass = '', rowSpan = 1) => {
+      const rs = rowSpan > 1 ? `grid-row: ${gridRow} / span ${rowSpan}` : `grid-row: ${gridRow}`;
+      return `<div class="bracket-cell ${extraClass}" style="grid-column:${gridCol}; ${rs}">${innerHtml}</div>`;
+    };
+
+    const ubQf = col('UBQF', [0, 1, 2, 3].map(i => renderMatchHtml(m(`ubqf_${i}`))).join(`<div style="height:${UB_QF_GAP}px"></div>`));
+    const ubSf = col('UBSF', ubSpacerBeforeFirstSf() + renderMatchHtml(m('ubsf_0')) + `<div style="height:${GAP_UB_SF}px"></div>` + renderMatchHtml(m('ubsf_1')));
+    const ubF = col('UBF', ubFinalSpacer() + renderMatchHtml(m('ubf')));
+    const lbR1 = col('LBR1', ubSpacerBeforeFirstSf() + renderMatchHtml(m('lbr1_0')) + `<div style="height:${GAP_UB_SF}px"></div>` + renderMatchHtml(m('lbr1_1')));
+    const lbQf = col('LBQF', ubSpacerBeforeFirstSf() + renderMatchHtml(m('lbqf_0')) + `<div style="height:${GAP_UB_SF}px"></div>` + renderMatchHtml(m('lbqf_1')));
+    const lbSf = col('LBSF', ubSpacerBeforeFirstSf() + renderMatchHtml(m('lbsf')));
+    const lbF = col('LBF', ubFinalSpacer() + renderMatchHtml(m('lbf')));
+    const gfInner = `<div class="round-col"><div class="round-title">${ROUND_LABELS.GF}</div>${renderMatchHtml(m('gf'), { gf: true })}</div>`;
+
+    inner.innerHTML =
+      `<div class="bracket-liquid">` +
+      cell(1, 1, ubQf) +
+      cell(2, 1, ubSf) +
+      cell(3, 1, '', 'bracket-cell--ub-gap') +
+      cell(4, 1, ubF) +
+      cell(5, 1, gfInner, 'gf-bracket-cell', 2) +
+      cell(1, 2, lbR1) +
+      cell(2, 2, lbQf) +
+      cell(3, 2, lbSf) +
+      cell(4, 2, lbF) +
+      `</div>`;
+
+    inner.querySelectorAll('.match').forEach(el => {
+      const id = el.dataset.matchId;
+      const match = findMatch(id);
+      const open = e => {
+        if (e.target.closest('.info-dot')) return;
+        if (match) showMatchModal(match);
+      };
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); } });
+    });
+    inner.querySelectorAll('.info-dot').forEach(dot => {
+      dot.addEventListener('click', e => {
+        e.stopPropagation();
+        const id = dot.dataset.infoMatch;
+        const match = findMatch(id);
+        if (match) showMatchModal(match);
+      });
+    });
+
+    requestAnimationFrame(() => {
+      drawBracketLines();
+    });
+  }
+
+  function drawBracketLines() {
+    const svg = document.getElementById('bracket-svg');
+    const wrap = document.getElementById('bracket-wrap');
+    const inner = document.getElementById('bracket-inner');
+    if (!svg || !wrap || !inner) return;
+    const w = inner.offsetWidth;
+    const h = inner.offsetHeight;
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.innerHTML = '';
+
+    function rectRel(el) {
+      const r = el.getBoundingClientRect();
+      const wr = wrap.getBoundingClientRect();
+      return {
+        l: r.left - wr.left,
+        r: r.right - wr.left,
+        t: r.top - wr.top,
+        b: r.bottom - wr.top,
+        cx: (r.left + r.right) / 2 - wr.left,
+        cy: (r.top + r.bottom) / 2 - wr.top
+      };
+    }
+
+    /** Победитель идёт вправо: сначала горизонталь на высоте исходного матча, потом вертикаль у цели (не «падает» вниз в колонку lower). */
+    function pathWinHorizontalFirst(Rf, Rt, pad = 16) {
+      const ax = Rf.r;
+      const ay = Rf.cy;
+      const bx = Rt.l;
+      const by = Rt.cy;
+      const ix = bx - pad;
+      return `M ${ax} ${ay} L ${ix} ${ay} L ${ix} ${by} L ${bx} ${by}`;
+    }
+
+    /** Проигравший падает в lower: от низа матча вниз, затем к входу в следующий матч слева. */
+    function pathLossDrop(Rf, Rt, pad = 16) {
+      const ax = Rf.cx;
+      const ay = Rf.b;
+      const bx = Rt.l;
+      const by = Rt.cy;
+      const yStep = Math.min(ay + 14, by - 8);
+      const hx = bx - pad;
+      return `M ${ax} ${ay} L ${ax} ${yStep} L ${hx} ${yStep} L ${hx} ${by} L ${bx} ${by}`;
+    }
+
+    function isUbOnly(id) {
+      return id === 'ubf' || id.startsWith('ubqf_') || id.startsWith('ubsf_');
+    }
+    function isLbOnly(id) {
+      return id.startsWith('lbr1_') || id.startsWith('lbqf_') || id === 'lbsf' || id === 'lbf';
+    }
+
+    function pathForEdge(fromId, toId, kind, Rf, Rt) {
+      if (kind === 'loss') {
+        return pathLossDrop(Rf, Rt);
+      }
+      if (toId === 'gf' && (fromId === 'ubf' || fromId === 'lbf')) {
+        return pathWinHorizontalFirst(Rf, Rt, 20);
+      }
+      if (kind === 'win' && isUbOnly(fromId) && isUbOnly(toId)) {
+        return pathWinHorizontalFirst(Rf, Rt);
+      }
+      if (kind === 'win' && isLbOnly(fromId) && isLbOnly(toId)) {
+        return pathWinHorizontalFirst(Rf, Rt);
+      }
+      const ax = Rf.r;
+      const ay = Rf.cy;
+      const bx = Rt.l;
+      const by = Rt.cy;
+      const mid = (ax + bx) / 2;
+      return `M ${ax} ${ay} L ${mid} ${ay} L ${mid} ${by} L ${bx} ${by}`;
+    }
+
+    const strokeWin = 'rgba(255,255,255,0.42)';
+    const strokeLoss = 'rgba(255,180,120,0.22)';
+
+    for (const [fromId, toId, kind] of BRACKET_EDGES) {
+      const fromEl = inner.querySelector(`[data-match-id="${fromId}"]`);
+      const toEl = inner.querySelector(`[data-match-id="${toId}"]`);
+      if (!fromEl || !toEl) continue;
+      const Rf = rectRel(fromEl);
+      const Rt = rectRel(toEl);
+      const d = pathForEdge(fromId, toId, kind, Rf, Rt);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', kind === 'loss' ? strokeLoss : strokeWin);
+      path.setAttribute('stroke-width', kind === 'loss' ? '1.1' : '1.35');
+      if (kind === 'loss') path.setAttribute('stroke-dasharray', '4 3');
+      svg.appendChild(path);
+    }
+  }
+
+  function renderSchedule() {
+    const body = document.getElementById('schedule-body');
+    if (!body) return;
+    if (teams.length !== 8 || matches.length === 0) {
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;padding:24px;">Нет матчей</td></tr>';
+      return;
+    }
+    const order = ['UBQF', 'UBSF', 'UBF', 'LBR1', 'LBQF', 'LBSF', 'LBF', 'GF'];
+    const sorted = [...matches].sort((a, b) => order.indexOf(a.round) - order.indexOf(b.round));
+    body.innerHTML = sorted.map(m => {
+      const t1 = displaySlotTeam(m, 1);
+      const t2 = displaySlotTeam(m, 2);
+      const stream = m.stream ? `<a href="${escapeHtml(m.stream)}" target="_blank" rel="noopener">ссылка</a>` : '—';
+      return `<tr class="schedule-row" data-match-id="${escapeHtml(m.id)}"><td>${ROUND_LABELS[m.round] || m.round}</td><td>${escapeHtml(t1)}</td><td>${m.score1} : ${m.score2}</td><td>${escapeHtml(t2)}</td><td>${stream}</td></tr>`;
+    }).join('');
+    body.querySelectorAll('.schedule-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const match = findMatch(row.dataset.matchId);
+        if (match) showMatchModal(match);
+      });
+    });
+  }
+
+  function setScheduleMode(on) {
+    scheduleMode = on;
+    const btn = document.getElementById('btn-schedule');
+    const bw = document.getElementById('bracket-wrap');
+    const sw = document.getElementById('schedule-wrap');
+    if (btn) {
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    if (bw) bw.classList.toggle('hidden', on);
+    if (sw) sw.classList.toggle('hidden', !on);
+    if (on) renderSchedule();
+    else requestAnimationFrame(() => drawBracketLines());
+  }
+
+  function showMatchModal(match) {
+    const formatKey = {
+      UBQF: 'ubqf', UBSF: 'ubsf', UBF: 'ubf',
+      LBR1: 'lbr1', LBQF: 'lbqf', LBSF: 'lbsf', LBF: 'lbf',
+      GF: 'gf'
+    }[match.round];
+    const maxGames = formats[formatKey] || 3;
+    ensureMatchDetail(match);
+    padGamesToFormat(match, maxGames);
+    const md = match.matchDetail;
+    const n1 = displaySlotTeam(match, 1);
+    const n2 = displaySlotTeam(match, 2);
+    const h1Hue = logoHue(n1);
+    const h2Hue = logoHue(n2);
+
+    let gamesHtml = '';
+    for (let gi = 0; gi < maxGames; gi++) {
+      const g = md.games[gi];
+      if (!isAdmin) {
+        const b1 = g.winner === 't1' ? 'wl-w' : g.winner === 't2' ? 'wl-l' : 'wl--';
+        const b2 = g.winner === 't2' ? 'wl-w' : g.winner === 't1' ? 'wl-l' : 'wl--';
+        const t1w = g.winner === 't1' ? 'W' : g.winner === 't2' ? 'L' : '—';
+        const t2w = g.winner === 't2' ? 'W' : g.winner === 't1' ? 'L' : '—';
+        const h1r = [0, 1, 2, 3, 4].map(si => heroIconImg(g.picks_t1[si])).join('');
+        const h2r = [0, 1, 2, 3, 4].map(si => heroIconImg(g.picks_t2[si])).join('');
+        gamesHtml += `<div class="md-game-row"><div class="wl-badge ${b1}">${t1w}</div><div class="md-heroes left">${h1r}</div><div class="md-dur">${escapeHtml(g.duration || '—')}</div><div class="md-heroes right">${h2r}</div><div class="wl-badge ${b2}">${t2w}</div></div>`;
+      } else {
+        const r0 = !g.winner ? 'checked' : '';
+        const r1 = g.winner === 't1' ? 'checked' : '';
+        const r2 = g.winner === 't2' ? 'checked' : '';
+        let picks1 = '';
+        let picks2 = '';
+        for (let si = 0; si < 5; si++) {
+          picks1 += heroSelectHtml(g.picks_t1[si] || '', `md-g${gi}-t1-${si}`);
+          picks2 += heroSelectHtml(g.picks_t2[si] || '', `md-g${gi}-t2-${si}`);
+        }
+        gamesHtml += `<div class="md-game-admin"><div style="font-size:0.75rem;color:#aaa">Карта ${gi + 1}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.78rem">
+            <span style="color:#888">Победитель карты:</span>
+            <label><input type="radio" name="md-g${gi}-win" value="" ${r0}> не сыграна</label>
+            <label><input type="radio" name="md-g${gi}-win" value="t1" ${r1}> сторона 1</label>
+            <label><input type="radio" name="md-g${gi}-win" value="t2" ${r2}> сторона 2</label>
+            <label style="margin-left:8px">Длительность <input type="text" id="md-g${gi}-dur" size="7" value="${escapeHtml(g.duration || '')}" placeholder="28:31"></label>
+          </div>
+          <div class="md-pick-row"><span style="font-size:0.7rem;color:#9a9a9a;flex:0 0 auto">Герои 1:</span>${picks1}</div>
+          <div class="md-pick-row"><span style="font-size:0.7rem;color:#9a9a9a;flex:0 0 auto">Герои 2:</span>${picks2}</div></div>`;
+      }
+    }
+
+    const bans1 = (md.bans_t1 || []).join(', ');
+    const bans2 = (md.bans_t2 || []).join(', ');
+    const bansListVis = [...(md.bans_t1 || []), ...(md.bans_t2 || [])].filter(Boolean);
+    const bansInner = bansListVis.length
+      ? `<ul style="margin:6px 0 0 18px;color:#ccc;">${bansListVis.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>`
+      : '<div style="color:#666;margin-top:6px">Нет данных</div>';
+    const bansAdmin = isAdmin
+      ? `<div style="margin-top:8px"><label style="font-size:0.72rem;color:#888">Баны сторона 1 (через запятую)</label><input type="text" id="md-bans-t1" class="stream-input" value="${escapeHtml(bans1)}"><label style="font-size:0.72rem;color:#888;margin-top:6px;display:block">Баны сторона 2</label><input type="text" id="md-bans-t2" class="stream-input" value="${escapeHtml(bans2)}"></div>`
+      : '';
+
+    const streamVal = match.stream || '';
+    const streamBlock = streamVal.startsWith('http')
+      ? `<a href="${escapeHtml(streamVal)}" target="_blank" rel="noopener">${escapeHtml(streamVal)}</a>`
+      : escapeHtml(streamVal || '—');
+
+    const dtEl = isAdmin
+      ? `<input type="datetime-local" id="md-datetime" class="stream-input" style="max-width:260px" value="${escapeHtml(toDateTimeLocalValue(md.scheduledAt))}">`
+      : `<span>${escapeHtml(md.scheduledAt ? new Date(md.scheduledAt).toLocaleString('ru-RU') : '—')}</span>`;
+
+    const castersEl = isAdmin
+      ? `<input type="text" id="md-casters" class="stream-input" value="${escapeHtml(md.casters || '')}" placeholder="Ник1, Ник2">`
+      : escapeHtml(md.casters || '—');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content modal-liquipedia">
+        <div class="md-head-date">${dtEl}</div>
+        <div class="md-summary">
+          <div class="md-team-block">
+            <span class="team-logo" style="width:32px;height:32px;font-size:0.75rem;background:linear-gradient(135deg,hsl(${h1Hue},35%,28%),hsl(${(h1Hue + 40) % 360},25%,18%))">${escapeHtml(teamInitials(n1))}</span>
+            <div><strong>${escapeHtml(n1)}</strong></div>
+          </div>
+          <div style="text-align:center">
+            <div class="md-big-score">${match.score1} : ${match.score2}</div>
+            <div class="md-bo">Bo${maxGames}</div>
+          </div>
+          <div class="md-team-block right">
+            <span class="team-logo" style="width:32px;height:32px;font-size:0.75rem;background:linear-gradient(135deg,hsl(${h2Hue},35%,28%),hsl(${(h2Hue + 40) % 360},25%,18%))">${escapeHtml(teamInitials(n2))}</span>
+            <div><strong>${escapeHtml(n2)}</strong></div>
+          </div>
+        </div>
+        <div style="font-size:0.72rem;color:#999;margin-bottom:6px">Карты серии</div>
+        ${gamesHtml}
+        <details class="md-bans"><summary>Баны (показать)</summary>${isAdmin ? bansAdmin : bansInner}</details>
+        <div class="md-meta-row">Кастеры: ${castersEl}</div>
+        <div style="margin-top:10px;font-size:0.78rem;color:#aaa">Трансляция</div>
+        ${isAdmin ? `<input type="text" id="md-stream" class="stream-input" value="${escapeHtml(streamVal)}" placeholder="https://...">` : `<div style="font-size:0.85rem">${streamBlock}</div>`}
+        <div class="modal-actions">
+          ${isAdmin ? '<button type="button" class="primary" id="save-match">Сохранить</button>' : ''}
+          <button type="button" id="close-modal" class="ghost">Закрыть</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const box = modal.querySelector('.modal-content');
+    if (box) box.addEventListener('click', e => e.stopPropagation());
+    if (isAdmin) {
+      document.getElementById('save-match').onclick = () => {
+        const dti = document.getElementById('md-datetime');
+        if (dti && dti.value) {
+          try {
+            match.matchDetail.scheduledAt = new Date(dti.value).toISOString();
+          } catch (_) {
+            match.matchDetail.scheduledAt = dti.value;
+          }
+        } else match.matchDetail.scheduledAt = '';
+        match.matchDetail.casters = document.getElementById('md-casters').value.trim();
+        match.stream = document.getElementById('md-stream').value.trim();
+        match.matchDetail.bans_t1 = document.getElementById('md-bans-t1').value.split(',').map(s => s.trim()).filter(Boolean);
+        match.matchDetail.bans_t2 = document.getElementById('md-bans-t2').value.split(',').map(s => s.trim()).filter(Boolean);
+        let s1 = 0;
+        let s2 = 0;
+        for (let gi = 0; gi < maxGames; gi++) {
+          const durEl = document.getElementById(`md-g${gi}-dur`);
+          const dur = durEl ? durEl.value.trim() : '';
+          const winEl = modal.querySelector(`input[name="md-g${gi}-win"]:checked`);
+          const w = winEl ? winEl.value : '';
+          const g = { duration: dur, winner: w === 't1' || w === 't2' ? w : '', picks_t1: [], picks_t2: [] };
+          for (let si = 0; si < 5; si++) {
+            g.picks_t1.push(document.getElementById(`md-g${gi}-t1-${si}`)?.value || '');
+            g.picks_t2.push(document.getElementById(`md-g${gi}-t2-${si}`)?.value || '');
+          }
+          match.matchDetail.games[gi] = g;
+          if (w === 't1') s1++;
+          if (w === 't2') s2++;
+        }
+        match.score1 = s1;
+        match.score2 = s2;
+        const needed = Math.ceil(maxGames / 2);
+        if (s1 >= needed && match.team1) match.winner = match.team1;
+        else if (s2 >= needed && match.team2) match.winner = match.team2;
+        else match.winner = null;
+        const g0 = match.matchDetail.games[0];
+        if (g0) match.picks = { t1: g0.picks_t1.filter(Boolean), t2: g0.picks_t2.filter(Boolean) };
+        saveAll();
+        propagateAllMatches();
+        renderEverything();
+        modal.remove();
+      };
+    }
+    document.getElementById('close-modal').onclick = () => modal.remove();
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  }
+
+  function renderAdminDock() {
+    const dock = document.getElementById('admin-dock');
+    if (!dock) return;
+    if (!isAdmin) {
+      dock.classList.add('hidden');
+      dock.innerHTML = '';
+      return;
+    }
+    dock.classList.remove('hidden');
+    dock.innerHTML = `
+      <div style="border-bottom:1px solid #333;padding-bottom:12px;margin-bottom:12px;">
+        <h4>Данные турнира</h4>
+        <label style="font-size:0.72rem;color:#888;display:block;margin-top:6px;">Название</label>
+        <input type="text" id="adm-inf-name" style="width:100%;margin-top:4px" value="${escapeHtml(infobox.name)}">
+        <label style="font-size:0.72rem;color:#888;display:block;margin-top:8px;">Призовой фонд</label>
+        <input type="text" id="adm-inf-prize" style="width:100%;margin-top:4px" value="${escapeHtml(infobox.prize)}">
+        <label style="font-size:0.72rem;color:#888;display:block;margin-top:8px;">Даты</label>
+        <input type="text" id="adm-inf-dates" style="width:100%;margin-top:4px" value="${escapeHtml(infobox.dates)}">
+        <label style="font-size:0.72rem;color:#888;display:block;margin-top:8px;">Версия / патч</label>
+        <input type="text" id="adm-inf-version" style="width:100%;margin-top:4px" value="${escapeHtml(infobox.version)}">
+        <label style="font-size:0.72rem;color:#888;display:block;margin-top:8px;">Описание</label>
+        <textarea id="adm-inf-desc" rows="4" style="width:100%;margin-top:4px;resize:vertical"></textarea>
+        <button type="button" class="ghost" id="adm-save-infobox" style="width:100%;margin-top:10px">Сохранить данные турнира</button>
+      </div>
+      <h4>Команды и сетка</h4>
+      <div class="team-form">
+        <input type="text" id="team-name" placeholder="Команда" style="width:130px">
+        <div id="players-container" style="width:100%"></div>
+        <button type="button" class="ghost" id="add-team-btn">Добавить</button>
+      </div>
+      <div id="teams-list"></div>
+      <button type="button" class="ghost" id="reset-default-teams" style="margin-top:8px;width:100%">Сбросить команды</button>
+      <button type="button" class="ghost" id="generate-bracket-btn" style="margin-top:8px;width:100%">Сформировать сетку</button>
+      <div class="format-settings">
+        <div class="format-row"><span>UB QF</span><select id="format-ubqf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.ubqf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>UB SF</span><select id="format-ubsf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.ubsf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>UB F</span><select id="format-ubf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.ubf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>LB R1</span><select id="format-lbr1">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.lbr1 === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>LB QF</span><select id="format-lbqf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.lbqf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>LB SF</span><select id="format-lbsf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.lbsf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>LB F</span><select id="format-lbf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.lbf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+        <div class="format-row"><span>GF</span><select id="format-gf">${[1, 2, 3, 5].map(v => `<option value="${v}" ${formats.gf === v ? 'selected' : ''}>Bo${v}</option>`).join('')}</select></div>
+      </div>`;
+    const ta = document.getElementById('adm-inf-desc');
+    if (ta) ta.value = infobox.description || '';
+    document.getElementById('adm-save-infobox').onclick = () => {
+      infobox.name = document.getElementById('adm-inf-name').value.trim() || 'Турнир';
+      infobox.prize = document.getElementById('adm-inf-prize').value.trim();
+      infobox.dates = document.getElementById('adm-inf-dates').value.trim();
+      infobox.version = document.getElementById('adm-inf-version').value.trim();
+      infobox.description = document.getElementById('adm-inf-desc').value;
+      saveAll();
+      renderTournamentBlock();
+    };
+    initPlayersForm();
+    renderAdminTeamsList();
+    document.getElementById('add-team-btn').onclick = addTeamFromForm;
+    document.getElementById('reset-default-teams').onclick = () => {
+      teams = getDefaultTeams();
+      matches = [];
+      saveAll();
+      renderEverything();
+    };
+    document.getElementById('generate-bracket-btn').onclick = () => buildBracket();
+    ['format-ubqf', 'format-ubsf', 'format-ubf', 'format-lbr1', 'format-lbqf', 'format-lbsf', 'format-lbf', 'format-gf'].forEach(id => {
+      document.getElementById(id).addEventListener('change', e => {
+        const key = id.replace('format-', '');
+        formats[key] = parseInt(e.target.value, 10);
+        saveAll();
+        if (teams.length === 8 && matches.length > 0) {
+          matches = createEmptyBracket(teams);
+          propagateAllMatches();
+          saveAll();
+          renderEverything();
+        }
+      });
+    });
+  }
+
+  function initPlayersForm() {
+    const container = document.getElementById('players-container');
+    if (!container) return;
+    container.innerHTML = '';
+    for (let i = 1; i <= 5; i++) {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;width:100%';
+      div.innerHTML = `<input type="text" id="player-name-${i}" placeholder="Игрок ${i}" style="flex:1;min-width:0"><select id="player-role-${i}" style="width:72px"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>`;
+      container.appendChild(div);
+    }
+  }
+
+  function renderAdminTeamsList() {
+    const container = document.getElementById('teams-list');
+    if (!container) return;
+    if (teams.length === 0) {
+      container.innerHTML = '<div style="color:#666;font-size:0.8rem;">Нет команд</div>';
+      return;
+    }
+    container.innerHTML = teams.map(t => `
+      <div class="team-item">
+        <span>${escapeHtml(t.name)} <span style="color:#666">(${t.players.length})</span></span>
+        <button type="button" class="delete-team" data-id="${t.id}">✕</button>
+      </div>`).join('');
+    container.querySelectorAll('.delete-team').forEach(btn => {
+      btn.onclick = () => {
+        const id = parseInt(btn.dataset.id, 10);
+        teams = teams.filter(t => t.id !== id);
+        matches = [];
+        saveAll();
+        renderEverything();
+      };
+    });
+  }
+
+  function addTeamFromForm() {
+    const name = document.getElementById('team-name').value.trim();
+    if (!name) return alert('Введите название');
+    const players = [];
+    for (let i = 1; i <= 5; i++) {
+      const pname = document.getElementById(`player-name-${i}`)?.value?.trim();
+      if (pname) {
+        const roleSel = document.getElementById(`player-role-${i}`);
+        const role = roleSel ? parseInt(roleSel.value, 10) || i : i;
+        players.push({ name: pname, role });
+      }
+    }
+    if (players.length === 0) players.push({ name: 'Player', role: 1 });
+    teams.push({ id: Date.now(), name, players, notice: '' });
+    matches = [];
+    saveAll();
+    renderEverything();
+    document.getElementById('team-name').value = '';
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById(`player-name-${i}`);
+      if (el) el.value = '';
+    }
+  }
+
+  function checkAuth() {
+    isAdmin = sessionStorage.getItem('tournament_auth') === 'true';
+    const authArea = document.getElementById('auth-area');
+    if (!authArea) return;
+    if (isAdmin) {
+      authArea.innerHTML = `<span class="badge-admin">Админ</span><button type="button" class="ghost" id="logout-btn">Выйти</button>`;
+      document.getElementById('logout-btn').onclick = () => {
+        sessionStorage.removeItem('tournament_auth');
+        location.reload();
+      };
+    } else {
+      authArea.innerHTML = `<button type="button" class="ghost" id="login-btn">Вход админа</button>`;
+      document.getElementById('login-btn').onclick = () => {
+        const pwd = prompt('Пароль:');
+        if (pwd === ADMIN_PASSWORD) {
+          sessionStorage.setItem('tournament_auth', 'true');
+          location.reload();
+        } else alert('Неверно');
+      };
+    }
+  }
+
+  function renderEverything() {
+    renderTournamentBlock();
+    renderTeamsWiki();
+    renderBracketGrid();
+    if (scheduleMode) renderSchedule();
+    renderAdminDock();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadAll();
+    checkAuth();
+    renderEverything();
+
+    document.getElementById('btn-schedule').addEventListener('click', () => {
+      setScheduleMode(!scheduleMode);
+    });
+
+    let resizeT;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeT);
+      resizeT = setTimeout(() => { if (!scheduleMode) drawBracketLines(); }, 80);
+    });
+  });
+</script>
+</body>
+</html>
